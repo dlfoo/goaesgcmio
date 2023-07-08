@@ -89,7 +89,9 @@ func NewReader(r io.Reader, key []byte) (*Reader, error) {
 
 	sizeBuf := make([]byte, 4)
 	if _, err := r.Read(sizeBuf); err != nil {
-		return nil, err
+		if err != io.EOF {
+			return nil, err
+		}
 	}
 
 	reader.chunkSize = int(binary.LittleEndian.Uint32(sizeBuf))
