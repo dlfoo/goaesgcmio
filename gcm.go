@@ -8,9 +8,11 @@ import (
 	"crypto/cipher"
 	"encoding/binary"
 	"io"
+	"sync"
 )
 
 type Reader struct {
+	l         sync.Mutex
 	c         cipher.AEAD
 	buf       *bytes.Buffer
 	src       io.Reader
@@ -18,7 +20,13 @@ type Reader struct {
 }
 
 func (g *Reader) Read(p []byte) (int, error) {
-	todo := readerChunkSize(len(p), g.chunkSize)
+	// Always check chunkSize is set in case
+	// the reader is being reused after close.
+	todo, err := g.getChunkSize(len(p))
+	if err != nil {
+		return 0, err
+	}
+
 	for {
 		if todo < g.chunkSize {
 			break
@@ -68,6 +76,29 @@ func (g *Reader) Read(p []byte) (int, error) {
 	return n, nil
 }
 
+func (g *Reader) getChunkSize(bufSize int) (int, error) {
+	g.l.Lock()
+	defer g.l.Unlock()
+	if g.chunkSize == 0 {
+		sizeBuf := make([]byte, 4)
+		if _, err := g.src.Read(sizeBuf); err != nil {
+			return 0, err
+		}
+
+		g.chunkSize = int(binary.LittleEndian.Uint32(sizeBuf))
+	}
+	return readerChunkSize(bufSize, g.chunkSize), nil
+}
+
+// Close resets the reader, for the next new read.
+func (g *Reader) Close() error {
+	g.l.Lock()
+	g.chunkSize = 0
+	g.buf.Truncate(0)
+	g.l.Unlock()
+	return nil
+}
+
 // NewReader returns a reader to read plaintext bytes from the encrypted
 // source reader.
 func NewReader(r io.Reader, key []byte) (*Reader, error) {
@@ -87,27 +118,26 @@ func NewReader(r io.Reader, key []byte) (*Reader, error) {
 		src: r,
 	}
 
-	sizeBuf := make([]byte, 4)
-	if _, err := r.Read(sizeBuf); err != nil {
-		if err != io.EOF {
-			return nil, err
-		}
-	}
-
-	reader.chunkSize = int(binary.LittleEndian.Uint32(sizeBuf))
 	return reader, nil
 
 }
 
 type Writer struct {
-	c           cipher.AEAD
-	dst         io.Writer
-	buf         *bytes.Buffer
-	chunkSize   int
-	payloadSize int
+	l                sync.Mutex
+	c                cipher.AEAD
+	dst              io.Writer
+	buf              *bytes.Buffer
+	chunkSize        int
+	chunkSizeWritten bool
+	payloadSize      int
 }
 
 func (g *Writer) Write(p []byte) (int, error) {
+	// Always check if the chunkSize has been
+	// written.
+	if err := g.writeChunkSize(); err != nil {
+		return 0, err
+	}
 	// todo represents the amount of bytes left to encrypt
 	// and write to the destination writer. Note: There may
 	// be bytes left over due to the chunkSize below.
@@ -158,9 +188,26 @@ func (g *Writer) Write(p []byte) (int, error) {
 	return n, nil
 }
 
+func (g *Writer) writeChunkSize() error {
+	g.l.Lock()
+	defer g.l.Unlock()
+	if !g.chunkSizeWritten {
+		// Write chunk size to start of destination writer, the reader can then
+		// use this to read that size chunks from the source reader.
+		if err := binary.Write(g.dst, binary.LittleEndian, uint32(g.chunkSize)); err != nil {
+			return err
+		}
+		g.chunkSizeWritten = true
+	}
+	return nil
+}
+
 func (g *Writer) Close() error {
 	// Return quickly if there's no bytes remaining on the buffer, nothing
 	// more needs to be done.
+	g.l.Lock()
+	defer g.l.Unlock()
+	g.chunkSizeWritten = false
 	if g.buf.Len() <= 0 {
 		return nil
 	}
@@ -207,12 +254,6 @@ func NewWriter(w io.Writer, key []byte, chunkSize int) (*Writer, error) {
 
 	payloadSize := payloadSize(chunkSize)
 	size := payloadSize + nonceSize + gcmTagSize
-
-	// Write chunk size to start of destination writer, the reader can then
-	// use this to read that size chunks from the source reader.
-	if err := binary.Write(w, binary.LittleEndian, uint32(size)); err != nil {
-		panic(err.Error())
-	}
 
 	return &Writer{
 		c:           aesgcm,
