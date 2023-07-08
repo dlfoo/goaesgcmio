@@ -1,3 +1,3 @@
-module github.com/dlfoo/go-aes-gcm-io
+module github.com/dlfoo/goaesgcmio
 
 go 1.17

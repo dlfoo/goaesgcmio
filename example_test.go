@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"io"
 
-	gcm "github.com/dlfoo/go-aes-gcm-io"
+	gcm "github.com/dlfoo/goaesgcmio"
 )
 
 // This example shows writing cleartext to an io.Writer.

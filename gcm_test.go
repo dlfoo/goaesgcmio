@@ -10,7 +10,7 @@ import (
 	"log"
 	"testing"
 
-	gcm "github.com/dlfoo/go-aes-gcm-io"
+	gcm "github.com/dlfoo/goaesgcmio"
 )
 
 var (

@@ -10,7 +10,7 @@ import (
 	"io"
 	"log"
 
-	gcm "github.com/dlfoo/go-aes-gcm-io"
+	gcm "github.com/dlfoo/goaesgcmio"
 )
 
 func main() {
