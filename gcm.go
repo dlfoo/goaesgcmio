@@ -8,11 +8,9 @@ import (
 	"crypto/cipher"
 	"encoding/binary"
 	"io"
-	"sync"
 )
 
 type Reader struct {
-	l         sync.Mutex
 	c         cipher.AEAD
 	buf       *bytes.Buffer
 	src       io.Reader
@@ -77,8 +75,6 @@ func (g *Reader) Read(p []byte) (int, error) {
 }
 
 func (g *Reader) getChunkSize(bufSize int) (int, error) {
-	g.l.Lock()
-	defer g.l.Unlock()
 	if g.chunkSize == 0 {
 		sizeBuf := make([]byte, 4)
 		if _, err := g.src.Read(sizeBuf); err != nil {
@@ -92,10 +88,8 @@ func (g *Reader) getChunkSize(bufSize int) (int, error) {
 
 // Close resets the reader, for the next new read.
 func (g *Reader) Close() error {
-	g.l.Lock()
 	g.chunkSize = 0
 	g.buf.Truncate(0)
-	g.l.Unlock()
 	return nil
 }
 
@@ -123,7 +117,6 @@ func NewReader(r io.Reader, key []byte) (*Reader, error) {
 }
 
 type Writer struct {
-	l                sync.Mutex
 	c                cipher.AEAD
 	dst              io.Writer
 	buf              *bytes.Buffer
@@ -189,8 +182,6 @@ func (g *Writer) Write(p []byte) (int, error) {
 }
 
 func (g *Writer) writeChunkSize() error {
-	g.l.Lock()
-	defer g.l.Unlock()
 	if !g.chunkSizeWritten {
 		// Write chunk size to start of destination writer, the reader can then
 		// use this to read that size chunks from the source reader.
@@ -205,8 +196,6 @@ func (g *Writer) writeChunkSize() error {
 func (g *Writer) Close() error {
 	// Return quickly if there's no bytes remaining on the buffer, nothing
 	// more needs to be done.
-	g.l.Lock()
-	defer g.l.Unlock()
 	g.chunkSizeWritten = false
 	if g.buf.Len() <= 0 {
 		return nil
