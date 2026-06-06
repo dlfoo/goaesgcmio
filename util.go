@@ -9,9 +9,10 @@ import (
 )
 
 const (
-	defaultChunkSize = 512 // Default size of each chunk written to the dest.
-	nonceSize        = 12  // Amount of bytes to read for random nonce.
-	gcmTagSize       = 16  // Size of generated GCM tag.
+	defaultChunkSize = 512              // Default size of each chunk written to the dest.
+	maxSafeChunkSize = 16 * 1024 * 1024 // Max safe acceptable chunk size.
+	nonceSize        = 12               // Amount of bytes to read for random nonce.
+	gcmTagSize       = 16               // Size of generated GCM tag.
 )
 
 func defaultNonce() ([]byte, error) {

@@ -7,6 +7,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"encoding/binary"
+	"errors"
 	"io"
 )
 
@@ -81,7 +82,11 @@ func (g *Reader) getChunkSize(bufSize int) (int, error) {
 			return 0, err
 		}
 
-		g.chunkSize = int(binary.LittleEndian.Uint32(sizeBuf))
+		parsedSize := int(binary.LittleEndian.Uint32(sizeBuf))
+		if parsedSize > maxSafeChunkSize || parsedSize <= 0 {
+			return 0, errors.New("invalid chunk size header")
+		}
+		g.chunkSize = parsedSize
 	}
 	return readerChunkSize(bufSize, g.chunkSize), nil
 }
